@@ -242,7 +242,10 @@ async function exchangeAuthorizationCode(
     || typeof payload.expires_in !== "number"
   ) {
     throw new TypeError(
-      `Codex token exchange response missing fields: ${JSON.stringify(payload)}`,
+      // Report field names only. A partially-malformed payload (e.g. a valid
+      // access_token/refresh_token with a stringified expires_in) would
+      // otherwise serialize both tokens into the error, which is then logged.
+      `Codex token exchange response missing fields: ${Object.keys(payload).join(", ")}`,
     )
   }
 
@@ -287,7 +290,8 @@ async function refreshAccessToken(
     || typeof payload.expires_in !== "number"
   ) {
     throw new TypeError(
-      `Codex token refresh response missing fields: ${JSON.stringify(payload)}`,
+      // Field names only -- never serialize the payload, which carries tokens.
+      `Codex token refresh response missing fields: ${Object.keys(payload).join(", ")}`,
     )
   }
 

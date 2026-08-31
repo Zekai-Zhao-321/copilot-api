@@ -3,6 +3,7 @@ import path from "node:path"
 
 import type { CodexCredentials } from "~/lib/oauth/codex"
 
+import { writeFileAtomically } from "./atomic-file"
 import { PATHS } from "./paths"
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -24,13 +25,12 @@ async function writeProtectedFile(
   filePath: string,
   content: string,
 ): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, content, "utf8")
-  try {
-    await fs.chmod(filePath, 0o600)
-  } catch {
-    return
-  }
+  await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 })
+  // Write through the atomic writer instead of writeFile + chmod. It creates
+  // the temp file with mode 0o600 up front, so the secret is never on disk
+  // world-readable, and the rename replaces a symlink planted at filePath
+  // rather than writing the credential through it.
+  writeFileAtomically(filePath, content)
 }
 
 function normalizeCodexCredentials(

@@ -3,6 +3,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { readFileSync } from "node:fs"
 
+import { resolveCorsOrigin } from "./lib/cors"
 import {
   createAuthMiddleware,
   getConfiguredAdminApiKeys,
@@ -29,7 +30,20 @@ export const server = new Hono()
 
 server.use(traceIdMiddleware)
 server.use(logger())
-server.use(cors())
+server.use(
+  cors({
+    // Loopback-only by default; never reflects "*" for a foreign origin.
+    // Extend with COPILOT_API_ALLOWED_ORIGINS if you front this with a UI.
+    origin: (origin) => resolveCorsOrigin(origin),
+    allowHeaders: [
+      "content-type",
+      "authorization",
+      "x-api-key",
+      "anthropic-version",
+      "anthropic-beta",
+    ],
+  }),
+)
 server.use(
   "*",
   createAuthMiddleware({
@@ -50,6 +64,26 @@ server.use(zstdDecompressionMiddleware)
 server.get("/", (c) => c.text("Server running"))
 server.get("/usage-viewer", (c) => {
   const usageViewerFileUrl = new URL("../pages/index.html", import.meta.url)
+  // Constrain what the page can execute/connect to. The page currently pulls
+  // Tailwind/Lucide from CDNs and fetches a user-supplied `?endpoint=`, so we
+  // can't use a strict `default-src 'self'` without breaking it, but scoping
+  // script sources to the known CDNs and blocking framing/base-hijacking still
+  // meaningfully limits the impact of any injection on the gateway origin.
+  c.header(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data:",
+      "connect-src *",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+    ].join("; "),
+  )
+  c.header("X-Content-Type-Options", "nosniff")
   return c.html(readFileSync(usageViewerFileUrl, "utf8"))
 })
 server.get("/usage-viewer/", (c) => c.redirect("/usage-viewer", 301))

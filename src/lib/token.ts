@@ -324,7 +324,8 @@ export async function setupGitHubToken(
 
     consola.info("Not logged in, getting new access token")
     const response = await getDeviceCode()
-    consola.debug("Device code response:", response)
+    // `device_code` is a pollable secret; log only the non-sensitive fields.
+    consola.debug("Device code response keys:", Object.keys(response))
 
     consola.info(
       `Please enter the code "${response.user_code}" in ${response.verification_uri}`,

@@ -1039,8 +1039,8 @@
                 </div>
               </div>
               <div class="mt-2 flex items-center justify-between gap-4 text-xs font-medium" style="color: var(--color-gray);">
-                <span>${used} / ${unlimited ? "∞" : entitlement.toLocaleString()}</span>
-                <span>${unlimited ? "∞" : remaining.toLocaleString()} remaining</span>
+                <span>${escapeHtml(used)} / ${unlimited ? "∞" : escapeHtml(entitlement.toLocaleString())}</span>
+                <span>${unlimited ? "∞" : escapeHtml(remaining.toLocaleString())} remaining</span>
               </div>
             </div>
           `;
