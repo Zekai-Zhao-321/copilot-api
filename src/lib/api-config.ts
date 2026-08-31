@@ -18,11 +18,32 @@ export const normalizeDomain = (input: string): string => {
     .replace(/\/+$/u, "")
 }
 
+// Reject anything that is not a bare host[:port]. Without this, a value like
+// `github.com@evil.example` normalizes to `github.com@evil.example`, which the
+// WHATWG URL parser then treats as host `evil.example` with `github.com` as
+// userinfo -- silently redirecting the GitHub OAuth token to an attacker host
+// while reading like `github.com` to anyone skimming a setup command.
+const isValidEnterpriseHost = (host: string): boolean => {
+  // host or host:port, where host is a dotted domain, IPv4, or bracketed IPv6.
+  // No userinfo (`@`), no path (`/`), no scheme, no whitespace.
+  return /^(?:\[[0-9a-f:]+\]|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(?::\d{1,5})?$/iu.test(
+    host,
+  )
+}
+
 export const getEnterpriseDomain = (): string | null => {
   const raw = (process.env.COPILOT_API_ENTERPRISE_URL ?? "").trim()
   if (!raw) return null
   const normalized = normalizeDomain(raw)
-  return normalized || null
+  if (!normalized) return null
+  if (!isValidEnterpriseHost(normalized)) {
+    throw new Error(
+      `Invalid COPILOT_API_ENTERPRISE_URL: ${JSON.stringify(raw)} does not `
+        + "resolve to a bare host[:port]. Userinfo, paths, and credentials in "
+        + "the URL are not allowed.",
+    )
+  }
+  return normalized
 }
 
 export const getGitHubBaseUrl = (): string => {

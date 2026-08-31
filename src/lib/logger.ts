@@ -29,7 +29,9 @@ let currentLogDateKey: string | undefined
 const ensureLogDirectory = () => {
   const logDir = getLogDir()
   if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true })
+    // Logs can contain full prompts/responses under --verbose; keep the
+    // directory owner-only so other local users can't read them.
+    fs.mkdirSync(logDir, { recursive: true, mode: 0o700 })
   }
 }
 
@@ -209,7 +211,10 @@ const getLogStream = (filePath: string): fs.WriteStream => {
 
   let stream = logStreams.get(filePath)
   if (!stream || stream.destroyed) {
-    const createdStream = fs.createWriteStream(filePath, { flags: "a" })
+    const createdStream = fs.createWriteStream(filePath, {
+      flags: "a",
+      mode: 0o600,
+    })
     stream = createdStream
     logStreams.set(filePath, createdStream)
 
@@ -284,9 +289,12 @@ export const createHandlerLogger = (name: string): ConsolaInstance => {
   const sanitizedName = sanitizeName(name)
   const instance = consola.withTag(name)
 
-  if (state.verbose) {
-    instance.level = 5
-  }
+  // Pin the level to the explicit --verbose flag instead of inheriting
+  // consola's env-derived default. Otherwise DEBUG or CONSOLA_LEVEL in the
+  // environment silently promotes this file-backed logger to debug and writes
+  // full request/response payloads to disk even without --verbose. Level 3
+  // keeps info/warn/error; level 5 (trace) enables the debug payload dumps.
+  instance.level = state.verbose ? 5 : 3
   instance.setReporters([])
 
   instance.addReporter({

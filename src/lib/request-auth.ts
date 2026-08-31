@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono"
 
 import consola from "consola"
+import { timingSafeEqual } from "node:crypto"
 
 import { getConfig } from "./config"
 
@@ -86,6 +87,27 @@ export function extractRequestApiKey(c: Context): string | null {
   return bearerToken || null
 }
 
+// Compare in constant time so the key check does not leak how many leading
+// bytes matched via response timing. `timingSafeEqual` requires equal-length
+// buffers, so the length check is unavoidable and is not itself sensitive.
+export function matchesAnyApiKey(
+  candidate: string,
+  apiKeys: Array<string>,
+): boolean {
+  const candidateBuffer = Buffer.from(candidate)
+  let matched = false
+  for (const key of apiKeys) {
+    const keyBuffer = Buffer.from(key)
+    if (
+      keyBuffer.length === candidateBuffer.length
+      && timingSafeEqual(keyBuffer, candidateBuffer)
+    ) {
+      matched = true
+    }
+  }
+  return matched
+}
+
 function createUnauthorizedResponse(c: Context): Response {
   c.header("WWW-Authenticate", 'Bearer realm="copilot-api"')
   return c.json(
@@ -127,7 +149,7 @@ export function createAuthMiddleware(
     }
 
     const requestApiKey = extractRequestApiKey(c)
-    if (!requestApiKey || !apiKeys.includes(requestApiKey)) {
+    if (!requestApiKey || !matchesAnyApiKey(requestApiKey, apiKeys)) {
       return createUnauthorizedResponse(c)
     }
 

@@ -7,6 +7,7 @@ import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
 import { runProviderSetup } from "./auth"
+import { assertSafeBindPosture, resolveBindHost } from "./lib/bind-guard"
 import { listEnabledProviders, mergeConfigWithDefaults } from "./lib/config"
 import { readGitHubToken } from "./lib/credential-store"
 import { getLatestModelForFamily } from "./lib/models"
@@ -27,6 +28,8 @@ import {
 
 interface RunServerOptions {
   port: number
+  host?: string
+  allowUnauthenticated: boolean
   verbose: boolean
   githubToken?: string
   claudeCode: boolean
@@ -178,6 +181,9 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   await ensurePaths()
 
+  const host = resolveBindHost(options.host)
+  assertSafeBindPosture(host, options.allowUnauthenticated)
+
   const serverUrl = `http://localhost:${options.port}`
 
   const githubToken = options.githubToken || (await readGitHubToken())
@@ -200,6 +206,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   serve({
     fetch: server.fetch as ServerHandler,
+    hostname: host,
     port: options.port,
     bun: {
       idleTimeout: 0,
@@ -218,6 +225,20 @@ export const start = defineCommand({
       type: "string",
       default: "4141",
       description: "Port to listen on",
+    },
+    host: {
+      type: "string",
+      description:
+        "Hostname/interface to bind (default 127.0.0.1, loopback only). "
+        + "Use 0.0.0.0 to expose on the network (requires an API key or "
+        + "--allow-unauthenticated). Also reads the HOST env var.",
+    },
+    "allow-unauthenticated": {
+      type: "boolean",
+      default: false,
+      description:
+        "Permit binding a non-loopback host with no API keys configured. "
+        + "Unsafe: anyone who can reach the port can use your subscription.",
     },
     verbose: {
       alias: "v",
@@ -252,8 +273,11 @@ export const start = defineCommand({
   run({ args }) {
     return runServer({
       port: Number.parseInt(args.port, 10),
+      host: args.host,
+      allowUnauthenticated: args["allow-unauthenticated"],
       verbose: args.verbose,
-      githubToken: args["github-token"],
+      // Env fallback lets the Docker entrypoint keep the token out of argv.
+      githubToken: args["github-token"] || process.env.GH_TOKEN,
       claudeCode: args["claude-code"],
       showToken: args["show-token"],
       proxyEnv: args["proxy-env"],

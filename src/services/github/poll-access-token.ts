@@ -34,10 +34,16 @@ export async function pollAccessToken(
       continue
     }
 
-    const json = await response.json()
-    consola.debug("Polling access token response:", json)
+    const json = (await response.json()) as AccessTokenResponse
+    // Never log the response body verbatim: on success it IS the access token
+    // ({access_token, token_type, scope}). Log only the field names so
+    // `--verbose` bug reports don't leak a long-lived GitHub OAuth token.
+    consola.debug(
+      "Polling access token response keys:",
+      Object.keys(json as object),
+    )
 
-    const { access_token } = json as AccessTokenResponse
+    const { access_token } = json
 
     if (access_token) {
       return access_token

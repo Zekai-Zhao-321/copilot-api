@@ -491,7 +491,13 @@ const positiveIntegerOrDefault = (value: unknown, fallback: number): number => {
 
 export function getAnthropicApiKey(): string | undefined {
   const config = getConfig()
-  return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined
+  // Deliberately NOT falling back to process.env.ANTHROPIC_API_KEY. That
+  // variable is exported in many developer shells for unrelated reasons, and
+  // using it here would silently forward the full conversation payload (system
+  // prompt, history, tool schemas -- i.e. source code) to api.anthropic.com
+  // for token counting without any opt-in. Set `anthropicApiKey` in config.json
+  // (stored 0600) to explicitly enable exact Anthropic token counting.
+  return config.anthropicApiKey ?? undefined
 }
 
 export function isResponsesApiWebSearchEnabled(): boolean {
