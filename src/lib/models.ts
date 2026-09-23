@@ -2,6 +2,10 @@ import type { Model } from "~/lib/types/models"
 
 import { state } from "~/lib/state"
 
+export function stripOneMillionContextSuffix(modelId: string): string {
+  return modelId.replace(/\[1m\]$/i, "")
+}
+
 /**
  * Converts a Copilot upstream model ID to a client-friendly ID that Claude Code
  * and Claude Desktop recognize (dots in version replaced with hyphens).
@@ -22,12 +26,13 @@ export interface NormalizedSdkModelId {
 
 export const findEndpointModel = (sdkModelId: string): Model | undefined => {
   const models = state.models?.data ?? []
-  const exactMatch = models.find((m) => m.id === sdkModelId)
+  const modelId = stripOneMillionContextSuffix(sdkModelId)
+  const exactMatch = models.find((m) => m.id === modelId)
   if (exactMatch) {
     return exactMatch
   }
 
-  const normalized = normalizeSdkModelId(sdkModelId)
+  const normalized = normalizeSdkModelId(modelId)
   if (!normalized) {
     return undefined
   }

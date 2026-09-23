@@ -87,3 +87,42 @@ test("returns undefined when no models are cached", () => {
 
   expect(getLatestModelForFamily("sonnet")).toBeUndefined()
 })
+
+test("resolves 1M Claude model variants to their upstream model", () => {
+  const script = `
+    const { state } = await import("./src/lib/state")
+    const { findEndpointModel, stripOneMillionContextSuffix } = await import("./src/lib/models")
+    state.models = {
+      object: "list",
+      data: ["claude-opus-5.5", "claude-haiku-4.5"].map((id) => ({
+        id,
+        capabilities: { family: "claude", limits: {}, supports: {}, object: "model_capabilities", tokenizer: "o200k_base", type: "chat" },
+      })),
+    }
+    console.log(JSON.stringify({
+      extended: findEndpointModel("claude-opus-5-5[1m]")?.id,
+      dotted: findEndpointModel("claude-opus-5.5[1m]")?.id,
+      standard: findEndpointModel("claude-opus-5-5")?.id,
+      haiku: findEndpointModel("claude-haiku-4-5")?.id,
+      missing: findEndpointModel("unknown[1m]")?.id ?? null,
+      stripped: stripOneMillionContextSuffix("claude-opus-5-5[1m]"),
+      unchanged: stripOneMillionContextSuffix("claude-opus-5-5"),
+    }))
+  `
+  const result = Bun.spawnSync({
+    cmd: [process.execPath, "--eval", script],
+    cwd: process.cwd(),
+  })
+  if (result.exitCode !== 0) {
+    throw new Error(new TextDecoder().decode(result.stderr))
+  }
+  expect(JSON.parse(new TextDecoder().decode(result.stdout))).toEqual({
+    extended: "claude-opus-5.5",
+    dotted: "claude-opus-5.5",
+    standard: "claude-opus-5.5",
+    haiku: "claude-haiku-4.5",
+    missing: null,
+    stripped: "claude-opus-5-5",
+    unchanged: "claude-opus-5-5",
+  })
+}, 15_000)

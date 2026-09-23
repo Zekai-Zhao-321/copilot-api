@@ -8,6 +8,7 @@ const actualTokenUsageModule = await import("~/lib/token-usage")
 
 let providerConfig: ResolvedProviderConfig | null = null
 let modelMappings: Record<string, string> = {}
+let anthropicApiKey: string | null = null
 
 interface TokenCountPayload {
   model: string
@@ -28,6 +29,7 @@ const noopTokenUsageRecorder = () => {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
+  getAnthropicApiKey: () => anthropicApiKey,
   getProviderConfig: (name: string) =>
     providerConfig && name === providerConfig.name ? providerConfig : null,
   getRawProviderConfig: (name: string) =>
@@ -92,6 +94,7 @@ const createApp = () => {
 }
 
 beforeEach(() => {
+  anthropicApiKey = null
   providerConfig = {
     apiKey: "provider-key",
     authType: "authorization",
@@ -115,6 +118,7 @@ beforeEach(() => {
 
 afterEach(() => {
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
+  anthropicApiKey = null
   providerConfig = null
 })
 
@@ -242,6 +246,33 @@ describe("provider/model aliases on top-level messages routes", () => {
     expect(openAIPayload.model).toBe("qwen-plus")
     expect(selectedModel.id).toBe("qwen-plus")
     expect(selectedModel.capabilities.tokenizer).toBe("o200k_base")
+  })
+
+  test("strips the 1M suffix before Anthropic token counting", async () => {
+    anthropicApiKey = "test-key"
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(Response.json({ input_tokens: 17 })),
+    )
+
+    const response = await createApp().request("/v1/messages/count_tokens", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "claude-opus-5-5[1m]",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ input_tokens: 17 })
+    expect(getTokenCount).not.toHaveBeenCalled()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://api.anthropic.com/v1/messages/count_tokens")
+    const upstreamPayload = JSON.parse(
+      (init as RequestInit).body as string,
+    ) as TokenCountPayload
+    expect(upstreamPayload.model).toBe("claude-opus-5-5")
   })
 
   test("resolves missing top-level count_tokens models to the o200k_base fallback model", () => {

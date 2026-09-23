@@ -13,7 +13,10 @@ import { getTokenCount } from "~/lib/tokenizer"
 import { handleProviderCountTokensForProvider } from "~/routes/provider/messages/count-tokens-handler"
 import { type Model } from "~/lib/types/models"
 
-import { findEndpointModel } from "../../lib/models"
+import {
+  findEndpointModel,
+  stripOneMillionContextSuffix,
+} from "../../lib/models"
 import { type AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import { translateToOpenAI } from "./non-stream-translation"
 import { normalizeSystemMessages } from "./preprocess"
@@ -50,7 +53,7 @@ async function countTokensViaAnthropic(
   if (!apiKey) return null
 
   // Copilot uses dotted names (claude-opus-4.6) but Anthropic requires dashes (claude-opus-4-6)
-  const model = payload.model.replaceAll(".", "-")
+  const model = stripOneMillionContextSuffix(payload.model).replaceAll(".", "-")
 
   const res = await fetch(
     "https://api.anthropic.com/v1/messages/count_tokens",

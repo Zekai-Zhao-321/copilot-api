@@ -1,6 +1,6 @@
 import { getConfig } from "./config-store"
 import { HTTPError } from "./error"
-import { toClientModelId } from "./models"
+import { stripOneMillionContextSuffix, toClientModelId } from "./models"
 
 export function getExposedModelPatterns(): Array<string> {
   const patterns = getConfig().exposedModels
@@ -29,12 +29,6 @@ function patternToRegExp(pattern: string): RegExp {
   return new RegExp(`^${source}$`, "i")
 }
 
-// Claude Code appends `[1m]` to opt into the 1M context window; the suffix is
-// not part of the model identity.
-function stripContextSuffix(modelId: string): string {
-  return modelId.replace(/\[1m\]$/i, "")
-}
-
 export function isModelExposed(
   modelId: string,
   patterns: Array<string> = getExposedModelPatterns(),
@@ -42,7 +36,7 @@ export function isModelExposed(
   if (patterns.length === 0) {
     return true
   }
-  const baseId = stripContextSuffix(modelId)
+  const baseId = stripOneMillionContextSuffix(modelId)
   const candidates = new Set([baseId, toClientModelId(baseId)])
   const matchers = patterns.map(patternToRegExp)
   return [...candidates].some((candidate) =>
