@@ -3,10 +3,6 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 5.5 (Copilot)",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "Sonnet 5 (Copilot)",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "GPT-6 Luna (Copilot)",
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "200000",
@@ -18,11 +14,17 @@
   "permissions": {
     "ask": ["WebFetch"]
   },
-  "model": "opus",
+  "model": "opus[1m]",
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
-  "enableWorkflows": true
+  "enableWorkflows": true,
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh"
+    }
+  },
+  "tui": "fullscreen"
 }
