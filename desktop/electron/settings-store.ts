@@ -15,8 +15,10 @@ const SETTINGS_PATH = path.join(
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   apiHome: '',
+  sqliteDbPath: '',
   oauthApp: 'default',
   enterpriseUrl: '',
+  host: '',
   lastPort: 4141,
   launchAtLogin: false,
   autoStartServer: false,
@@ -77,6 +79,10 @@ export function normalizeSettings(
       typeof settings?.apiHome === 'string' ?
         settings.apiHome
       : DEFAULT_SETTINGS.apiHome,
+    sqliteDbPath:
+      typeof settings?.sqliteDbPath === 'string' ?
+        settings.sqliteDbPath
+      : DEFAULT_SETTINGS.sqliteDbPath,
     oauthApp:
       settings?.oauthApp === 'opencode' ?
         'opencode'
@@ -85,6 +91,10 @@ export function normalizeSettings(
       typeof settings?.enterpriseUrl === 'string' ?
         settings.enterpriseUrl
       : DEFAULT_SETTINGS.enterpriseUrl,
+    host:
+      typeof settings?.host === 'string' ?
+        settings.host.trim()
+      : DEFAULT_SETTINGS.host,
     lastPort:
       typeof settings?.lastPort === 'number' ?
         settings.lastPort

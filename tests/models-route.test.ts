@@ -3,6 +3,7 @@ import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ModelsResponse } from "~/lib/types/models"
+import bundledCodexCatalogJson from "~/routes/models/models.json"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenModule = await import("~/lib/token")
@@ -75,6 +76,18 @@ const createDefaultCodexCatalogModels = () => [
   },
 ]
 
+const bundledCodexModels = (
+  bundledCodexCatalogJson as {
+    models: Array<{
+      slug: string
+      visibility?: string
+      supported_in_api?: boolean
+      model_messages?: { instructions_template?: string }
+    }>
+  }
+).models
+const bundledCodexSlugs = bundledCodexModels.map((model) => model.slug)
+
 let codexCatalogModels: Array<Record<string, unknown>> =
   createDefaultCodexCatalogModels()
 
@@ -124,6 +137,32 @@ const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
             max_output_tokens: 8_000,
             name: "DeepSeek V4 Pro",
             object: "model",
+          },
+        ],
+      }),
+    )
+  }
+
+  if (requestUrl === "https://openrouter.example/v1/models") {
+    return Promise.resolve(
+      Response.json({
+        data: [
+          {
+            architecture: {
+              input_modalities: ["file", "image", "text"],
+              modality: "text+image+file->text",
+              output_modalities: ["text"],
+            },
+            canonical_slug: "openai/gpt-5.1-codex-20251113",
+            context_length: 400_000,
+            description: "Codex-optimized GPT model.",
+            id: "openai/gpt-5.1-codex",
+            name: "OpenAI: GPT-5.1-Codex",
+            supported_parameters: ["include_reasoning", "reasoning", "tools"],
+            top_provider: {
+              context_length: 400_000,
+              max_completion_tokens: 128_000,
+            },
           },
         ],
       }),
@@ -276,16 +315,16 @@ describe("model routes", () => {
       data: Array<Record<string, unknown> & { id: string }>
     }
     const modelIds = body.data.map((model) => model.id)
-    expect(modelIds).toContain("deepseek/deepseek-v4-flash")
+    expect(modelIds).toContain("deepseek/deepseek-flash")
     expect(modelIds).toContain("deepseek/deepseek-v4-pro")
     expect(modelIds).toContain("kimi/k3")
     expect(modelIds).toContain("kimi/k3-256k")
     expect(modelIds).toContain("opencode-go/hy3")
     expect(modelIds).toContain("opencode-go/gpt-5.6-luna")
     expect(
-      body.data.find((model) => model.id === "deepseek/deepseek-v4-flash"),
+      body.data.find((model) => model.id === "deepseek/deepseek-flash"),
     ).toMatchObject({
-      display_name: "deepseek-v4-flash",
+      display_name: "deepseek-flash",
       object: "model",
       owned_by: "deepseek",
     })
@@ -311,6 +350,7 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     expect(body.models.map((model) => model.slug)).toEqual([
+      ...bundledCodexSlugs,
       "claude-sonnet-4-6",
     ])
   })
@@ -335,16 +375,17 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     const modelSlugs = body.models.map((model) => model.slug)
-    expect(modelSlugs).toContain("deepseek/deepseek-v4-flash")
+    expect(modelSlugs).toContain("deepseek/deepseek-flash")
     expect(modelSlugs).toContain("kimi/k3")
     expect(modelSlugs).toContain("opencode-go/hy3")
     expect(modelSlugs).toContain("opencode-go/qwen3.7-plus")
     expect(
-      body.models.find((model) => model.slug === "deepseek/deepseek-v4-flash"),
+      body.models.find((model) => model.slug === "deepseek/deepseek-flash"),
     ).toMatchObject({
       context_window: 1_000_000,
-      input_modalities: ["text"],
-      max_output_tokens: 64_000,
+      input_modalities: ["text", "image"],
+      max_output_tokens: 384_000,
+      shell_type: "shell_command",
     })
     expect(body.models.find((model) => model.slug === "kimi/k3")).toMatchObject(
       {
@@ -426,6 +467,36 @@ describe("model routes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test("maps the OpenRouter image modality into Codex candidates", async () => {
+    enabledProviders = ["openrouter"]
+    providerConfigs = {
+      openrouter: {
+        apiKey: "openrouter-key",
+        authType: "authorization",
+        baseUrl: "https://openrouter.example",
+        name: "openrouter",
+        type: "anthropic",
+      },
+    }
+
+    const response = await createApp().request("/v1/models?client=codex", {
+      headers: { "user-agent": "codex-cli/1.0.0" },
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      models: Array<Record<string, unknown> & { slug: string }>
+    }
+    expect(
+      body.models.find(
+        (model) => model.slug === "openrouter/openai/gpt-5.1-codex",
+      ),
+    ).toMatchObject({
+      input_modalities: ["image", "text"],
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   test("adds built-in Codex provider models without calling upstream", async () => {
     enabledProviders = ["codex"]
     providerConfigs = {
@@ -442,7 +513,7 @@ describe("model routes", () => {
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: Array<{ id: string }> }
-    expect(body.data.map((model) => model.id)).toContain("codex/gpt-5.4")
+    expect(body.data.map((model) => model.id)).toContain("codex/gpt-6-astra")
     expect(body.data.map((model) => model.id)).toContain("codex/gpt-5.6-sol")
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -563,15 +634,18 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     expect(body.models.map((model) => model.slug)).toEqual([
+      ...bundledCodexSlugs,
       "gpt-responses-http",
       "gpt-responses-websocket",
     ])
-    expect(body.models[0]?.description).toBe(
-      "gpt-responses-http through the Copilot Responses API.",
-    )
-    expect(body.models[1]?.description).toBe(
-      "gpt-responses-websocket through the Copilot Responses API.",
-    )
+    expect(
+      body.models.find((model) => model.slug === "gpt-responses-http")
+        ?.description,
+    ).toBe("gpt-responses-http through the Copilot Responses API.")
+    expect(
+      body.models.find((model) => model.slug === "gpt-responses-websocket")
+        ?.description,
+    ).toBe("gpt-responses-websocket through the Copilot Responses API.")
   })
 
   test("describes non-GPT Responses-capable Copilot models as adapter-backed", async () => {
@@ -594,15 +668,16 @@ describe("model routes", () => {
     const body = (await response.json()) as {
       models: Array<Record<string, unknown> & { slug: string }>
     }
-    expect(body.models[0]?.description).toBe(
-      "claude-sonnet-4.6 through the Copilot Messages adapter.",
-    )
-    expect(body.models[1]?.description).toBe(
-      "gemini-3-pro through the Copilot Messages-to-Responses adapter.",
-    )
+    expect(
+      body.models.find((model) => model.slug === "claude-sonnet-4-6")
+        ?.description,
+    ).toBe("claude-sonnet-4.6 through the Copilot Messages adapter.")
+    expect(
+      body.models.find((model) => model.slug === "gemini-3-pro")?.description,
+    ).toBe("gemini-3-pro through the Copilot Messages-to-Responses adapter.")
   })
 
-  test("uses the default Codex template when the Codex provider is missing", async () => {
+  test("uses the bundled Codex catalog when the Codex provider is missing", async () => {
     const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
     copilotModels.data[0].supported_endpoints = ["/v1/messages"]
     copilotModels.data[0].capabilities.supports.tool_calls = true
@@ -625,13 +700,18 @@ describe("model routes", () => {
     )
     expect(synthetic).toMatchObject({
       display_name: "claude-sonnet-4.6",
+      shell_type: "unified_exec",
     })
     expect(synthetic?.available_in_plans).toContain("pro")
+    const template = bundledCodexModels.find(
+      (model) =>
+        model.visibility === "list" && model.supported_in_api !== false,
+    )
     const modelMessages = synthetic?.model_messages as
       | { instructions_template?: string }
       | undefined
-    expect(modelMessages?.instructions_template).toContain(
-      "You are Codex, an agent based on GPT-5.",
+    expect(modelMessages?.instructions_template).toBe(
+      template?.model_messages?.instructions_template,
     )
   })
 
@@ -818,6 +898,7 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     expect(body.models.map((model) => model.slug)).toEqual([
+      ...bundledCodexSlugs,
       "claude-sonnet-4-6",
     ])
   })
@@ -891,7 +972,7 @@ describe("model routes", () => {
   })
 
   test("adds ultra reasoning effort at the end when it is missing", async () => {
-    const copilotModels = createCopilotModels(["gpt-5.6-sol"])
+    const copilotModels = createCopilotModels(["gpt-reasoning-test"])
     copilotModels.data[0].supported_endpoints = ["/v1/messages"]
     copilotModels.data[0].capabilities.supports.tool_calls = true
     copilotModels.data[0].capabilities.supports.reasoning_effort = [
@@ -911,7 +992,7 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     expect(
-      body.models.find((model) => model.slug === "gpt-5.6-sol"),
+      body.models.find((model) => model.slug === "gpt-reasoning-test"),
     ).toMatchObject({
       default_reasoning_level: "low",
       supported_reasoning_levels: [
@@ -1051,7 +1132,7 @@ describe("model routes", () => {
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: Array<{ id: string }> }
-    expect(body.data.map((model) => model.id)).toContain("gpt-5.4")
+    expect(body.data.map((model) => model.id)).toContain("gpt-6-astra")
     expect(body.data.map((model) => model.id)).toContain("gpt-5.6-sol")
     expect(fetchMock).not.toHaveBeenCalled()
   })

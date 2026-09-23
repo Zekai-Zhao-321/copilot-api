@@ -21,6 +21,17 @@ export interface AuthStatus extends AuthResult {
   mode: DesktopAuthMode
 }
 
+export interface CodexAccountSummary {
+  accountId: string
+  alias?: string
+  active: boolean
+}
+
+export interface CodexLoginInput {
+  alias?: string
+  callbackUrlOrCode?: string
+}
+
 export type ProviderType =
   'anthropic' | 'openai-compatible' | 'openai-responses'
 export type ProviderAuthType = 'authorization' | 'x-api-key'
@@ -47,6 +58,7 @@ export type ProviderAuthInput =
 export interface ServerStatus {
   running: boolean
   port?: number
+  host?: string
   error?: string
 }
 
@@ -72,7 +84,13 @@ export interface ModelMappingsConfig {
   modelMappings: Record<string, string>
 }
 
-export type TokenUsagePeriod = 'day' | 'week' | 'month'
+export type TokenUsagePeriod =
+  | 'today'
+  | 'this_week'
+  | 'last_7_days'
+  | 'this_month'
+  | 'last_30_days'
+  | 'lifetime'
 
 export interface TokenUsageCost {
   amount: number
@@ -178,8 +196,10 @@ export interface DesktopProxySettings {
 
 export interface DesktopSettings {
   apiHome: string
+  sqliteDbPath: string
   oauthApp: 'default' | 'opencode'
   enterpriseUrl: string
+  host: string
   lastPort: number
   launchAtLogin: boolean
   autoStartServer: boolean
@@ -201,11 +221,15 @@ declare global {
       saveToken: (token: string) => Promise<AuthResult>
       checkSavedToken: () => Promise<AuthResult>
       configureProvider: (input: ProviderAuthInput) => Promise<AuthResult>
-      startCodexLogin: (callbackUrlOrCode?: string) => Promise<AuthResult>
+      getCodexAccounts: () => Promise<Array<CodexAccountSummary>>
+      switchCodexAccount: (accountId: string) => Promise<AuthResult>
+      removeCodexAccount: (accountId: string) => Promise<AuthResult>
+      startCodexLogin: (input?: CodexLoginInput) => Promise<AuthResult>
       logout: () => Promise<void>
       startServer: (
         port: number,
         authMode?: DesktopAuthMode,
+        host?: string,
       ) => Promise<ServerStatus>
       stopServer: () => Promise<void>
       getServerStatus: () => Promise<ServerStatus>

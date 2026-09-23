@@ -167,8 +167,10 @@ describe('desktop proxy config', () => {
   test('normalizes desktop settings with proxy mode defaults', () => {
     expect(normalizeSettings(null)).toEqual({
       apiHome: '',
+      sqliteDbPath: '',
       oauthApp: 'default',
       enterpriseUrl: '',
+      host: '',
       lastPort: 4141,
       launchAtLogin: false,
       autoStartServer: false,
@@ -189,8 +191,10 @@ describe('desktop proxy config', () => {
     expect(
       normalizeSettings({
         apiHome: 'C:/copilot-api',
+        sqliteDbPath: 'D:/copilot-data/usage.sqlite',
         oauthApp: 'opencode',
         enterpriseUrl: 'ghe.example.com',
+        host: '',
         lastPort: 5151,
         launchAtLogin: true,
         autoStartServer: true,
@@ -203,8 +207,10 @@ describe('desktop proxy config', () => {
       }),
     ).toEqual({
       apiHome: 'C:/copilot-api',
+      sqliteDbPath: 'D:/copilot-data/usage.sqlite',
       oauthApp: 'opencode',
       enterpriseUrl: 'ghe.example.com',
+      host: '',
       lastPort: 5151,
       launchAtLogin: true,
       autoStartServer: true,

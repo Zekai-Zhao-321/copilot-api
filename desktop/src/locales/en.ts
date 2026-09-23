@@ -5,6 +5,19 @@ const en: Locale = {
     subtitle: 'Choose a provider to authorize or configure',
     githubAuth: 'Sign in with GitHub',
     codexAuth: 'Sign in with OpenAI Codex',
+    codexAccounts: 'Codex accounts',
+    codexAccountAlias: 'Account alias (optional)',
+    codexAccountAliasPlaceholder: 'For example: Work',
+    codexAccountLimit: 'Store up to 3 accounts',
+    codexAccountRemoved: 'Account removed.',
+    codexActiveAccount: 'Active',
+    codexAddAccount: 'Add or sign in again',
+    codexNoAccounts: 'No Codex accounts added yet',
+    codexRemoveAccount: 'Remove',
+    codexRemoveRestartRequired:
+      'Account removed. Restart the running server so it stops using it.',
+    codexRestartRequired: 'Account selected. Restart the server to apply it.',
+    codexUseAccount: 'Use',
     customProvider: 'Custom provider',
     loading: 'Please wait…',
     manualToken: 'Enter Copilot token manually',
@@ -74,9 +87,12 @@ const en: Locale = {
     tokenUsageModelBreakdown: 'Model breakdown',
     tokenUsageOutput: 'Output',
     tokenUsagePage: 'Page {{page}} / {{total}}',
-    tokenUsagePeriodDay: 'Day',
-    tokenUsagePeriodMonth: '30 days',
-    tokenUsagePeriodWeek: '7 days',
+    tokenUsagePeriodToday: 'Today',
+    tokenUsagePeriodThisWeek: 'This week',
+    tokenUsagePeriodLast7Days: '7 days',
+    tokenUsagePeriodThisMonth: 'This month',
+    tokenUsagePeriodLast30Days: '30 days',
+    tokenUsagePeriodLifetime: 'Lifetime',
     tokenUsageProvider: 'Provider',
     tokenUsageRequests: 'Requests',
     tokenUsageSession: 'Session',
@@ -140,13 +156,15 @@ const en: Locale = {
     startTimeout:
       'Server startup timed out, port {{port}} may already be in use',
     processExit: 'Process exited with code {{code}}',
+    invalidHost:
+      'Invalid listening host; use an address such as 127.0.0.1 or 0.0.0.0',
   },
   settings: {
     title: 'Settings',
     restartAppNote:
-      'Changes to OAuth App, API Home, and Enterprise URL take effect only after restarting the app.',
+      'Changes to OAuth App, API Home, SQLite DB Path, and Enterprise URL take effect only after restarting the app.',
     restartAppPrompt:
-      'Saved. Restart the app for OAuth App, API Home, and Enterprise URL changes to take effect.',
+      'Saved. Restart the app for OAuth App, API Home, SQLite DB Path, and Enterprise URL changes to take effect.',
     sectionGeneral: 'General',
     launchAtLogin: 'Launch at login',
     launchAtLoginDesc:
@@ -167,6 +185,10 @@ const en: Locale = {
     adminKeyDesc:
       'Used for /admin/* endpoints. Leave empty to remove it; the next server start generates a new one automatically.',
     sectionNetwork: 'Network',
+    host: 'Listening host',
+    hostDesc:
+      'Address the API server binds to; leave empty for 127.0.0.1. Takes effect the next time the server starts',
+    hostInvalid: 'Invalid listening host, for example 127.0.0.1 or 0.0.0.0',
     proxySystemNote:
       'System proxy is used by default. When custom proxy is selected, Electron and newly started local services use the settings below; when no proxy is selected, network requests connect directly. Restart any running service to apply changes.',
     proxyMode: 'Proxy mode',
@@ -185,6 +207,9 @@ const en: Locale = {
       'When set to opencode, Electron will use the opencode OAuth flow on startup.',
     apiHome: 'API Home',
     apiHomeDesc: 'Optional custom directory for tokens and config.json.',
+    sqliteDbPath: 'SQLite DB Path',
+    sqliteDbPathDesc:
+      'Optional SQLite database file path for usage data (COPILOT_API_SQLITE_DB_PATH).',
     enterpriseUrl: 'Enterprise URL',
     enterpriseUrlDesc:
       'Optional value such as company.ghe.com for GitHub Enterprise.',

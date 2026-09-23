@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { Hono } from "hono"
 
 import type { ResponsesResult } from "~/lib/types/responses"
 
@@ -20,6 +21,8 @@ class MockWebSocket {
   static readonly CLOSED = 3
   static autoComplete = true
   static instances: Array<MockWebSocket> = []
+  static responseError: { message: string; statusCode: number } | null = null
+  static responseMetadataHeaders: Record<string, unknown> | null = null
 
   readonly sent: Array<string> = []
   readonly init: { dispatcher?: unknown; headers?: Record<string, string> }
@@ -78,6 +81,41 @@ class MockWebSocket {
     }
 
     const parsed = JSON.parse(latestSent) as { model: string }
+    if (MockWebSocket.responseError) {
+      this.emit("message", {
+        data: JSON.stringify({
+          error: { message: MockWebSocket.responseError.message },
+          status_code: MockWebSocket.responseError.statusCode,
+          type: "error",
+        }),
+      })
+      return
+    }
+
+    if (MockWebSocket.responseMetadataHeaders) {
+      this.emit("message", {
+        data: JSON.stringify({
+          type: "codex.rate_limits",
+          plan_type: "plus",
+        }),
+      })
+      this.emit("message", {
+        data: JSON.stringify({
+          type: "test.pre_response",
+        }),
+      })
+      this.emit("message", {
+        data: JSON.stringify({
+          type: "codex.response.metadata",
+          headers: MockWebSocket.responseMetadataHeaders,
+        }),
+      })
+    }
+    this.emit("message", {
+      data: JSON.stringify({
+        type: "response.created",
+      }),
+    })
     this.emit("message", {
       data: JSON.stringify({
         response: createResponsesResult(
@@ -134,6 +172,12 @@ const { state } = await import("~/lib/state")
 const { forwardCodexResponses } = await import(
   "~/services/codex/create-responses"
 )
+const { providerResponsesRoutes } = await import(
+  "~/routes/provider/responses/route"
+)
+const { providerResponsesHandlerDependencies } = await import(
+  "~/routes/provider/responses/handler"
+)
 
 const originalState = {
   codexAccessToken: state.codexAccessToken,
@@ -179,6 +223,8 @@ const mockFetchJsonResponse = (body: unknown): void => {
 beforeEach(() => {
   MockWebSocket.autoComplete = true
   MockWebSocket.instances = []
+  MockWebSocket.responseError = null
+  MockWebSocket.responseMetadataHeaders = null
   state.codexAccessToken = "codex-token"
   state.codexAccountId = "codex-account"
   fetchMock.mockClear()
@@ -210,7 +256,7 @@ test("forwardCodexResponses falls back to HTTP for non-streaming responses", asy
     }),
     undefined,
     {
-      signal: downstream.signal,
+      clientSignal: downstream.signal,
       transport: "websocket",
     },
   )
@@ -402,7 +448,7 @@ test("forwardCodexResponses cancels and unlocks an HTTP body after a terminal ev
   expect(upstreamBody.locked).toBe(false)
 })
 
-test("forwardCodexResponses preserves response.completed while using websocket", async () => {
+test("forwardCodexResponses preserves response lifecycle events", async () => {
   const response = await forwardCodexResponses(
     {
       input: "hello",
@@ -420,9 +466,119 @@ test("forwardCodexResponses preserves response.completed while using websocket",
   const chunks = await collectStreamChunks(response as AsyncIterable<unknown>)
 
   expect(MockWebSocket.instances).toHaveLength(1)
-  expect(chunks).toHaveLength(1)
-  expect(chunks[0]?.event).toBe("response.completed")
-  expect(chunks[0]?.data).toContain('"type":"response.completed"')
+  expect(chunks.map((chunk) => chunk.event)).toEqual([
+    "response.created",
+    "response.completed",
+  ])
+})
+
+test("provider Responses forwards Codex websocket metadata as HTTP headers", async () => {
+  const originalResolveProviderConfig =
+    providerResponsesHandlerDependencies.resolveProviderConfig
+  MockWebSocket.responseMetadataHeaders = {
+    "content-type": "application/unsafe",
+    "proxy-authenticate": "Basic",
+    "x-codex-safety-buffering-enabled": "true",
+    "x-codex-safety-buffering-faster-model": "gpt-5.6-luna",
+    "x-codex-turn-state": "turn-state-websocket-123",
+    "x-models-etag": 'W/"cc84b142c478d2fdd3d1257f1a8eefc2"',
+    "x-custom-metadata": "forward-me",
+  }
+  providerResponsesHandlerDependencies.resolveProviderConfig = () =>
+    Promise.resolve({
+      apiKey: "",
+      authType: "oauth2",
+      baseUrl: "https://chatgpt.example/backend-api",
+      models: { "gpt-5.4": {} },
+      name: "codex",
+      type: "openai-responses",
+    })
+
+  try {
+    const app = new Hono()
+    app.route("/:provider/v1/responses", providerResponsesRoutes)
+    const response = await app.request("/codex/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-5.4",
+        stream: true,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("x-models-etag")).toBe(
+      'W/"cc84b142c478d2fdd3d1257f1a8eefc2"',
+    )
+    expect(response.headers.get("x-codex-turn-state")).toBe(
+      "turn-state-websocket-123",
+    )
+    expect(response.headers.get("x-codex-safety-buffering-enabled")).toBe(
+      "true",
+    )
+    expect(response.headers.get("x-codex-safety-buffering-faster-model")).toBe(
+      "gpt-5.6-luna",
+    )
+    expect(response.headers.get("x-custom-metadata")).toBe("forward-me")
+    expect(response.headers.get("proxy-authenticate")).toBeNull()
+    expect(response.headers.get("content-type")).toContain("text/event-stream")
+
+    const body = await response.text()
+    const rateLimitsIndex = body.indexOf("codex.rate_limits")
+    const preResponseIndex = body.indexOf("test.pre_response")
+    const responseCreatedIndex = body.indexOf("response.created")
+    const responseCompletedIndex = body.indexOf("response.completed")
+    expect(rateLimitsIndex).toBeGreaterThanOrEqual(0)
+    expect(preResponseIndex).toBeGreaterThan(rateLimitsIndex)
+    expect(responseCreatedIndex).toBeGreaterThan(preResponseIndex)
+    expect(responseCompletedIndex).toBeGreaterThan(responseCreatedIndex)
+    expect(body).toContain("response.completed")
+    expect(body).not.toContain("codex.response.metadata")
+  } finally {
+    providerResponsesHandlerDependencies.resolveProviderConfig =
+      originalResolveProviderConfig
+  }
+})
+
+test("provider Responses handles a first Codex websocket error without metadata", async () => {
+  const originalResolveProviderConfig =
+    providerResponsesHandlerDependencies.resolveProviderConfig
+  MockWebSocket.responseError = {
+    message: "Codex quota exceeded",
+    statusCode: 429,
+  }
+  providerResponsesHandlerDependencies.resolveProviderConfig = () =>
+    Promise.resolve({
+      apiKey: "",
+      authType: "oauth2",
+      baseUrl: "https://chatgpt.example/backend-api",
+      models: { "gpt-5.4": {} },
+      name: "codex",
+      type: "openai-responses",
+    })
+
+  try {
+    const app = new Hono()
+    app.route("/:provider/v1/responses", providerResponsesRoutes)
+    const response = await app.request("/codex/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-5.4",
+        stream: true,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(429)
+    expect(await response.json()).toEqual({
+      error: { message: "Codex quota exceeded" },
+    })
+  } finally {
+    providerResponsesHandlerDependencies.resolveProviderConfig =
+      originalResolveProviderConfig
+  }
 })
 
 test("forwardCodexResponses emits an error event when the websocket closes without a terminal response", async () => {
@@ -458,22 +614,26 @@ test("forwardCodexResponses emits an error event when the websocket closes witho
   )
 })
 
-test("forwardCodexResponses propagates cancellation to an active websocket", async () => {
+test("forwardCodexResponses drains an active websocket after client cancellation", async () => {
   MockWebSocket.autoComplete = false
   const controller = new AbortController()
   const response = await forwardCodexResponses(
     { input: "hello", model: "gpt-5.4", stream: true },
     new Headers(),
     undefined,
-    { signal: controller.signal, transport: "websocket" },
+    { clientSignal: controller.signal, transport: "websocket" },
   )
   const chunksPromise = collectStreamChunks(response as AsyncIterable<unknown>)
   await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
 
   controller.abort()
+  await delay(10)
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.OPEN)
 
-  expect(await chunksPromise).toEqual([])
-  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+  MockWebSocket.instances[0]?.completeLatestResponse()
+  const chunks = await chunksPromise
+  expect(chunks.at(-1)?.event).toBe("response.completed")
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.OPEN)
 })
 
 const collectStreamChunks = async (
@@ -509,3 +669,6 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
   throw new Error("Timed out waiting for condition")
 }
+
+const delay = async (milliseconds: number): Promise<void> =>
+  await new Promise((resolve) => originalSetTimeout(resolve, milliseconds))

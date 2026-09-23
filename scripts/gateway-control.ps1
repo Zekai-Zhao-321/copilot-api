@@ -80,6 +80,7 @@ function Start-Gateway {
 
   $savedTokenPath = Join-Path $homeDir "github_token"
   Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+  Remove-Item Env:COPILOT_API_GITHUB_TOKEN -ErrorAction SilentlyContinue
   $savedToken = $null
   if (Test-Path -LiteralPath $savedTokenPath) {
     $savedToken = (Get-Content -LiteralPath $savedTokenPath -Raw).Trim()

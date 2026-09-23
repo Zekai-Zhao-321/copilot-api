@@ -1,18 +1,36 @@
-node_modules
-
-.vscode/
-
-.git/
-.github/
-.gitignore
-
+# Dependencies and build output
+node_modules/
 dist/
+desktop/dist/
+desktop/out/
+desktop/release/
+
+# Git and CI metadata
+.git/
+.gitignore
+.github/
+.agents/
+
+# Local/runtime state
+.env
+.env.*
+*.log
+**/*.log
+.eslintcache
+.omx/
+.claude-plugin/
+.vscode/
+.idea/
+data/
+copilot-data/
+
+# Tests and docs not needed in runtime image
+coverage/
 tests/
+docs/
 *.md
 
-.eslintcache
-
-# Keep local credentials and runtime volumes out of the build context.
+# Keep local credentials out of the build context.
 **/.env
 **/.env.*
 **/*.local
@@ -23,5 +41,13 @@ tests/
 **/*.key
 **/*.p12
 **/*.pfx
-copilot-data/
 .claude/
+
+# Desktop/plugin development artifacts
+plugin/
+desktop/
+scripts/
+
+# OS/editor files
+.DS_Store
+Thumbs.db

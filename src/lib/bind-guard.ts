@@ -1,23 +1,19 @@
 import consola from "consola"
 
 import { getConfiguredApiKeys } from "./request-auth"
+import { DEFAULT_SERVER_HOST, isLoopbackHostname } from "./server-host"
 
 // Loopback addresses are only reachable from the same machine. Everything else
 // (0.0.0.0, ::, a specific LAN/public IP) exposes the gateway to the network.
 export function isLoopbackHost(host: string): boolean {
-  const normalized = host
-    .trim()
-    .toLowerCase()
-    .replace(/^\[|\]$/gu, "")
-  if (normalized === "localhost" || normalized === "::1") return true
-  return /^127(?:\.\d{1,3}){3}$/u.test(normalized)
+  return isLoopbackHostname(host)
 }
 
 // Precedence: explicit --host flag, then HOST env (srvx also reads it), then a
 // safe loopback default. Historically this bound all interfaces by default.
 export function resolveBindHost(hostOption?: string): string {
   const explicit = hostOption?.trim() || process.env.HOST?.trim()
-  return explicit || "127.0.0.1"
+  return explicit || DEFAULT_SERVER_HOST
 }
 
 // Fail closed: refuse to expose an unauthenticated gateway to the network.
@@ -29,10 +25,11 @@ export function resolveBindHost(hostOption?: string): string {
 export function assertSafeBindPosture(
   host: string,
   allowUnauthenticated: boolean,
+  getApiKeys: () => Array<string> = getConfiguredApiKeys,
 ): void {
   if (isLoopbackHost(host)) return
 
-  const hasApiKeys = getConfiguredApiKeys().length > 0
+  const hasApiKeys = getApiKeys().length > 0
   if (hasApiKeys) {
     consola.warn(
       `Binding to ${host} exposes the gateway beyond this machine. `

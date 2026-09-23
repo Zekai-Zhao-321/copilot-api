@@ -6,6 +6,18 @@ export interface Locale {
     subtitle: string
     githubAuth: string
     codexAuth: string
+    codexAccounts: string
+    codexAccountAlias: string
+    codexAccountAliasPlaceholder: string
+    codexAccountLimit: string
+    codexAccountRemoved: string
+    codexActiveAccount: string
+    codexAddAccount: string
+    codexNoAccounts: string
+    codexRemoveAccount: string
+    codexRemoveRestartRequired: string
+    codexRestartRequired: string
+    codexUseAccount: string
     customProvider: string
     loading: string
     manualToken: string
@@ -74,9 +86,12 @@ export interface Locale {
     tokenUsageModelBreakdown: string
     tokenUsageOutput: string
     tokenUsagePage: string
-    tokenUsagePeriodDay: string
-    tokenUsagePeriodMonth: string
-    tokenUsagePeriodWeek: string
+    tokenUsagePeriodToday: string
+    tokenUsagePeriodThisWeek: string
+    tokenUsagePeriodLast7Days: string
+    tokenUsagePeriodThisMonth: string
+    tokenUsagePeriodLast30Days: string
+    tokenUsagePeriodLifetime: string
     tokenUsageProvider: string
     tokenUsageRequests: string
     tokenUsageSession: string
@@ -136,6 +151,7 @@ export interface Locale {
     startFailed: string
     startTimeout: string
     processExit: string
+    invalidHost: string
   }
   settings: {
     title: string
@@ -156,6 +172,9 @@ export interface Locale {
     adminKeyPlaceholder: string
     adminKeyDesc: string
     sectionNetwork: string
+    host: string
+    hostDesc: string
+    hostInvalid: string
     proxySystemNote: string
     proxyMode: string
     proxyModeSystem: string
@@ -171,6 +190,8 @@ export interface Locale {
     oauthAppDesc: string
     apiHome: string
     apiHomeDesc: string
+    sqliteDbPath: string
+    sqliteDbPathDesc: string
     enterpriseUrl: string
     enterpriseUrlDesc: string
     verbose: string

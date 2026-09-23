@@ -1,14 +1,13 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-// Mock the config-backed API-key lookup so the guard can be tested in isolation.
+import {
+  assertSafeBindPosture,
+  isLoopbackHost,
+  resolveBindHost,
+} from "~/lib/bind-guard"
+
 let mockApiKeys: Array<string> = []
-await mock.module("~/lib/request-auth", () => ({
-  getConfiguredApiKeys: () => mockApiKeys,
-}))
-
-const { assertSafeBindPosture, isLoopbackHost, resolveBindHost } = await import(
-  "~/lib/bind-guard"
-)
+const getMockApiKeys = () => mockApiKeys
 
 afterEach(() => {
   mockApiKeys = []
@@ -51,23 +50,29 @@ describe("resolveBindHost", () => {
 describe("assertSafeBindPosture", () => {
   test("allows loopback with no keys", () => {
     mockApiKeys = []
-    expect(() => assertSafeBindPosture("127.0.0.1", false)).not.toThrow()
+    expect(() =>
+      assertSafeBindPosture("127.0.0.1", false, getMockApiKeys),
+    ).not.toThrow()
   })
 
   test("throws when exposing a non-loopback host with no keys", () => {
     mockApiKeys = []
-    expect(() => assertSafeBindPosture("0.0.0.0", false)).toThrow(
-      /Refusing to bind/u,
-    )
+    expect(() =>
+      assertSafeBindPosture("0.0.0.0", false, getMockApiKeys),
+    ).toThrow(/Refusing to bind/u)
   })
 
   test("allows a non-loopback host when API keys are configured", () => {
     mockApiKeys = ["secret-key"]
-    expect(() => assertSafeBindPosture("0.0.0.0", false)).not.toThrow()
+    expect(() =>
+      assertSafeBindPosture("0.0.0.0", false, getMockApiKeys),
+    ).not.toThrow()
   })
 
   test("allows a non-loopback host with the explicit override", () => {
     mockApiKeys = []
-    expect(() => assertSafeBindPosture("0.0.0.0", true)).not.toThrow()
+    expect(() =>
+      assertSafeBindPosture("0.0.0.0", true, getMockApiKeys),
+    ).not.toThrow()
   })
 })

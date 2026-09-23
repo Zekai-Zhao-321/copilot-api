@@ -9,6 +9,7 @@ import {
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
+import { writeSSEIfConnected } from "~/lib/sse"
 import { isCodexUserAgent } from "~/routes/models/codex-models"
 import {
   handleProviderResponsesForProvider,
@@ -39,6 +40,7 @@ import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
+  filterReasoningForTransport,
   getResponsesTransportForModel,
   getResponsesRequestOptions,
   normalizeInputImageDetails,
@@ -119,6 +121,7 @@ export const handleResponses = async (c: Context) => {
     responsesTransport,
   )
   if (useMessagesFallback) {
+    filterReasoningForTransport(payload, true)
     return await handleResponsesViaMessages(c, {
       payload,
       publicModel: requestedModel,
@@ -141,6 +144,8 @@ export const handleResponses = async (c: Context) => {
       400,
     )
   }
+
+  filterReasoningForTransport(payload, false)
 
   const recordUsage = createCopilotTokenUsageRecorder({
     endpoint: "responses",
@@ -205,7 +210,7 @@ export const handleResponses = async (c: Context) => {
     subagentMarker,
     requestId,
     sessionId: fallbackSessionId,
-    signal: c.req.raw.signal,
+    clientSignal: c.req.raw.signal,
     transport: responsesTransport,
   })
 
@@ -241,7 +246,7 @@ export const handleResponses = async (c: Context) => {
             idTracker,
           )
 
-          await stream.writeSSE({
+          await writeSSEIfConnected(stream, {
             id: (chunk as { id?: string }).id,
             event: (chunk as { event?: string }).event,
             data: processedData,

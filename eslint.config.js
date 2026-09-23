@@ -49,6 +49,7 @@ export default defineConfig(
           experimentalOperatorPosition: "start",
           experimentalTernaries: true,
           plugins: ["prettier-plugin-packagejson"],
+          endOfLine: "auto",
           semi: false,
         },
       ],
