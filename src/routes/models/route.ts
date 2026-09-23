@@ -11,6 +11,7 @@ import {
 import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
+import { getExposedModelPatterns, isModelExposed } from "~/lib/model-exposure"
 import { toClientModelId } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
@@ -207,8 +208,12 @@ async function getAggregatedModels(
 
   const models = [...copilotModels, ...providerModelsByProvider.flat()]
 
+  const exposedModelPatterns = getExposedModelPatterns()
   const seenModelIds = new Set<string>()
   return models.filter((model) => {
+    if (!isModelExposed(model.id, exposedModelPatterns)) {
+      return false
+    }
     if (seenModelIds.has(model.id)) {
       return false
     }
@@ -243,8 +248,10 @@ async function getSyntheticCodexModels(
     result.status === "fulfilled" ? result.value : [],
   )
 
+  const exposedModelPatterns = getExposedModelPatterns()
   const seen = new Set<string>()
   return [...copilotModels, ...providerModels.flat()].filter((candidate) => {
+    if (!isModelExposed(candidate.slug, exposedModelPatterns)) return false
     if (seen.has(candidate.slug)) return false
     seen.add(candidate.slug)
     return true

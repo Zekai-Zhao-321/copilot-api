@@ -14,6 +14,9 @@ export interface AppConfig {
   }
   providers?: Record<string, ProviderConfig>
   modelMappings?: Record<string, string>
+  // Model ID patterns (`*` wildcard) the gateway lists and accepts, e.g.
+  // ["claude-*"]. Checked after modelMappings. Unset exposes every model.
+  exposedModels?: Array<string>
   extraPrompts?: Record<string, string>
   smallModel?: string
   contextManagement?: ContextManagementConfig

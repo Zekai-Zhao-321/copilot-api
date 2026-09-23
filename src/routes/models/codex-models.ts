@@ -2,6 +2,7 @@ import type { Context } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
+import { getExposedModelPatterns, isModelExposed } from "~/lib/model-exposure"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import type {
   CodexModel,
@@ -160,11 +161,14 @@ export async function handleMergedCodexModels(
       ]
     })
 
+  const exposedModelPatterns = getExposedModelPatterns()
   const models = [
     ...upstreamModels,
     ...codexProviderAliases,
     ...syntheticModels,
-  ].sort((a, b) => getModelPriority(a) - getModelPriority(b))
+  ]
+    .filter((model) => isModelExposed(model.slug, exposedModelPatterns))
+    .sort((a, b) => getModelPriority(a) - getModelPriority(b))
 
   const response: CodexModelsResponse = {
     ...(upstreamCatalog ?? {}),

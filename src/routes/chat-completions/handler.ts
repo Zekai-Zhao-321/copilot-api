@@ -5,6 +5,7 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { resolveMappedModel } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { assertModelExposed } from "~/lib/model-exposure"
 import { findEndpointModel } from "~/lib/models"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
@@ -29,6 +30,7 @@ export async function handleCompletion(c: Context) {
   let payload = await c.req.json<ChatCompletionsPayload>()
   const requestedModel = payload.model
   payload.model = resolveMappedModel(payload.model)
+  assertModelExposed(payload.model)
   if (payload.model !== requestedModel) {
     consola.debug(
       `Resolved model mapping: ${requestedModel} -> ${payload.model}`,

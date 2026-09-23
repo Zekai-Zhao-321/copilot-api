@@ -147,6 +147,112 @@ add each configured third-party provider host only if you use providers.
 
 ---
 
+## Locking Claude Code and Claude Desktop to the gateway
+
+The gateway controls where *model* traffic goes, but Claude Code and Claude
+Desktop also make their own connections (updates, telemetry, error reports,
+WebFetch's domain check). To make sure the apps themselves talk only to this
+gateway, turn that traffic off in settings, then enforce it with a per-app
+outbound firewall rule.
+
+A per-app rule matches the executable that opens the socket. Commands the
+agent runs (`bash`, `git`, `curl`, `npm`, `pip`), hooks, and stdio MCP servers
+are separate executables, so they keep internet access. The gateway on
+`127.0.0.1` stays reachable because Windows Firewall does not filter loopback
+traffic.
+
+| Keeps working | Stops working |
+| --- | --- |
+| Model calls through the gateway | Built-in WebFetch (it fetches from the app process) |
+| WebSearch (it goes through the gateway) | Remote (HTTP) MCP servers and claude.ai connectors |
+| Shell commands, hooks, stdio MCP servers | Auto-update, telemetry, error reporting |
+| | Plugin installs that download in-process |
+
+If you need WebFetch, skip the firewall rule and rely on the settings in step 1
+alone; a per-app firewall can't separate WebFetch from the app's other traffic.
+
+### 1. Turn off the apps' own background traffic
+
+Claude Code, in `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
+    "ANTHROPIC_AUTH_TOKEN": "<gateway api key>",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
+  },
+  "skipWebFetchPreflight": true
+}
+```
+
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turns off auto-update, telemetry,
+and error reporting. `skipWebFetchPreflight` stops WebFetch from sending each
+domain to `api.anthropic.com`. Use `127.0.0.1` rather than `localhost`: the
+gateway binds IPv4 loopback only, and `localhost` can resolve to `::1` first.
+
+Claude Desktop, under **Developer → Configure Third-Party Inference** (see
+[Telemetry and egress](https://claude.com/docs/third-party/claude-desktop/telemetry)):
+set `disableEssentialTelemetry`, `disableNonessentialTelemetry`,
+`disableNonessentialServices`, `disableAutoUpdates`, and
+`skipWebFetchPreflight` to `true`, and `modelCatalogEnabled` to `false`.
+Desktop still needs `downloads.claude.ai` once to fetch its Claude Code engine
+and workspace bundle at the first session start. Open a Code and a Cowork
+session before adding the firewall rule, or install the offline installer,
+which ships both.
+
+### 2. Windows: block the Claude executables
+
+Install Claude Code with the native installer, not npm. An npm install runs as
+`node.exe`, which every Node program shares, including this gateway when it is
+started with `npx`.
+
+Open everything you want covered (Claude Code, Claude Desktop, a Code tab
+session in Desktop, and the VS Code extension if you use it). Each ships its
+own `claude.exe` under a versioned folder, so collect the paths from the
+running processes. In an elevated PowerShell:
+
+```powershell
+$paths = Get-Process -Name claude -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty Path -Unique
+$paths
+foreach ($p in $paths) {
+  New-NetFirewallRule -DisplayName "Block Claude egress ($p)" -Group "Claude egress" `
+    -Direction Outbound -Action Block -Program $p -Profile Any | Out-Null
+}
+```
+
+Remove the rules with `Remove-NetFirewallRule -Group "Claude egress"`. The
+rules also block the built-in updater, so to update: remove the rules, update,
+reopen the apps, and re-run the script, because the versioned paths change.
+
+### 3. Verify
+
+- Chat works: the gateway on loopback is reachable.
+- Ask Claude Code to run `curl -sI https://example.com`: it succeeds, because
+  shell commands aren't blocked.
+- Ask it to WebFetch `https://example.com`: it fails, as expected.
+- To see what the apps still try to reach, run
+  `Set-NetFirewallProfile -All -LogBlocked True` and read
+  `%windir%\System32\LogFiles\Firewall\pfirewall.log`.
+
+DNS lookups on Windows go through the DNS Client service rather than the app,
+so a blocked app can still resolve hostnames, but it can't connect to them.
+
+### macOS and Linux
+
+- **macOS:** the built-in application firewall filters inbound traffic only.
+  Use LuLu or Little Snitch. For the Claude Code binary (`~/.local/bin/claude`
+  links to `~/.local/share/claude/versions/<version>`), allow `127.0.0.1` and
+  deny everything else. For Desktop, cover both `Claude` and `Claude Helper`;
+  Electron makes its network requests from the helper process.
+- **Linux:** use OpenSnitch, which also matches by executable path. Don't use
+  iptables `owner` or `cgroup` matches: child processes inherit them, so the
+  agent's shell commands would be blocked too.
+
+---
+
 ## Residual risks NOT changed in code (your informed choice)
 
 These are inherent to what the tool does. They are intentionally left as-is

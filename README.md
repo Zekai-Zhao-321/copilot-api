@@ -104,7 +104,7 @@ Because that catalog also contains GPT models for Codex, set Claude Desktop's **
 
 Configure Codex's user-level `~/.codex/config.toml` with a custom Responses provider using `base_url = "http://127.0.0.1:4141/v1"`, `wire_api = "responses"`, and a gateway key (see [Using with Codex](#using-with-codex)). Do not rely on a project-scoped config or assume the ChatGPT desktop app supports the same custom provider. Keep keys out of committed project settings.
 
-These routes share the gateway's model catalog and `auth.apiKeys`. Separate keys let you rotate or revoke each client independently, but do **not** restrict which models a key can use. A global Claude-only model allowlist would also hide GPT models from Codex; use the clients' model selection settings instead. For a Claude-like model picker, map Claude Code's Opus, Sonnet, and Haiku tiers to Claude model IDs available on your Copilot seat rather than setting `ANTHROPIC_MODEL` to a GPT model. Note that the gateway defaults `smallModel` and `messageApiWebSearchModel` to `gpt-5-mini`, so some Claude Code warmups and WebSearch requests can still use GPT unless you change those settings. Strict per-client isolation requires separate gateway instances with different credentials/configurations, or a future server-side per-key policy; adding a second URL to this instance would not provide it.
+These routes share the gateway's model catalog and `auth.apiKeys`. Separate keys let you rotate or revoke each client independently, but do **not** restrict which models a key can use. Keep `exposedModels` unset for a shared Claude-and-Codex gateway: `["claude-*"]` would hide GPT models from Codex and reject its GPT requests. Use the clients' model selection settings instead. For a Claude-like model picker, map Claude Code's Opus, Sonnet, and Haiku tiers to Claude model IDs available on your Copilot seat rather than setting `ANTHROPIC_MODEL` to a GPT model. Note that the gateway defaults `smallModel` and `messageApiWebSearchModel` to `gpt-5-mini`, so some Claude Code warmups and WebSearch requests can still use GPT unless you change those settings. Strict per-client isolation requires separate gateway instances with different credentials/configurations, or a future server-side per-key policy; adding a second URL to this instance would not provide it.
 
 Claude Code's WebSearch-only requests use `messageApiWebSearchModel` to run Copilot Responses web search, then return an Anthropic-shaped result under the requested Claude model ID. The default is `gpt-5-mini`; `gpt-6-luna` is another option when your Copilot model catalog advertises it with a `/responses` endpoint and actually accepts the `web_search` tool. The gateway attributes usage to the search model. This translation is distinct from Codex's own Responses web search and from either client's context compaction.
 
@@ -189,6 +189,40 @@ Here is an example `.claude/settings.json` file:
 You can find more options here: [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables)
 
 You can also read more about IDE integration here: [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
+
+### Claude-only setup (Claude Code and Claude Desktop)
+
+For a **separate** Claude-only gateway (not one shared with Codex), restrict top-level model selection by adding `exposedModels` to `config.json`:
+
+```json
+{
+  "exposedModels": ["claude-*"],
+  "messageApiWebSearchModel": ""
+}
+```
+
+`/v1/models` then lists only Claude models, including for Codex clients, and top-level requests for other model IDs get a `404`. Clearing `messageApiWebSearchModel` also stops Claude Code's WebSearch from running on a GPT model; leave it set if you still want web search. Provider-scoped routes and internal model substitutions (such as warmups) are not an outbound model firewall; configure `smallModel` and egress restrictions separately if you need strict isolation.
+
+Claude Code picks models by tier alias (`opus`, `sonnet`, `haiku`, `fable`), so point every tier at a Copilot Claude model. Subagents, the `model` frontmatter in agent files, and workflow agents all resolve through these aliases, and background tasks (titles, summaries) use the Haiku tier:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
+    "ANTHROPIC_AUTH_TOKEN": "<gateway api key>",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6[1m]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-6[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+  }
+}
+```
+
+Replace the IDs with what `curl http://localhost:4141/v1/models` returns (use each model's `claude_model_id`, which carries `[1m]` when the model has a 1M window), or run `start --claude-code` to have the newest model per tier filled in for you. Don't set `ANTHROPIC_MODEL` or `CLAUDE_CODE_SUBAGENT_MODEL` if you want Claude Code to choose the tier per task the way it does on a first-party subscription.
+
+For Claude Desktop, open **Developer → Configure Third-Party Inference**, set the provider to **Gateway**, the base URL to `http://127.0.0.1:4141`, and the API key to your gateway key. Desktop discovers models from `/v1/models`, so `exposedModels` limits its picker too. See [Claude Desktop gateway docs](https://claude.com/docs/third-party/claude-desktop/gateway).
+
+To make sure Claude Code and Claude Desktop themselves connect only to the gateway, see [Locking Claude Code and Claude Desktop to the gateway](./SECURITY-HARDENING.md#locking-claude-code-and-claude-desktop-to-the-gateway).
 
 ## Using with OpenCode
 
@@ -773,6 +807,7 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
 - **auth.apiKeys:** API keys used for request authentication on non-admin routes. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication for non-admin routes is disabled only on loopback listeners; non-loopback listeners refuse to start.
 - **auth.adminApiKey:** Single admin key used only for `/admin/*` routes. If missing, the server generates a random key at startup and writes it back to `config.json`. Requests use the same `x-api-key` or `Authorization: Bearer` headers, but regular `auth.apiKeys` never grant access to `/admin/*`.
 - **modelMappings:** Exact `sourceModel -> targetModel` rewrites shared by top-level `POST /v1/messages`, `POST /v1/messages/count_tokens`, `POST /v1/responses`, and `POST /v1/chat/completions` requests. Omit it or leave it as `{}` to disable rewrites. Both the source and target must be non-empty strings. Targets can be regular model IDs or `provider/model` aliases such as `dashscope/qwen3.6-plus`, and the rewrite happens before provider alias parsing. These mappings are not split per interface. The admin endpoints `GET/POST /admin/config/model-mappings` read and update only this field.
+- **exposedModels:** Model ID patterns the top-level routes list and accept, with `*` as a wildcard, matched case-insensitively. For example, `["claude-*"]` exposes only Claude model IDs and also filters the Codex-UA catalog. It is checked after `modelMappings`, so a mapping target must match. `GET /v1/models` hides everything else, and `POST /v1/messages`, `POST /v1/responses`, and `POST /v1/chat/completions` return `404` for it. Provider-scoped routes (`/:provider/v1/...`) and internal model substitutions are not filtered. Omit it or leave it empty to expose every model; invalid entries fail explicitly rather than disabling the restriction.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Responses API. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. For GPT-5.3+ models (e.g. `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`), a built-in commentary prompt is used as fallback when not explicitly configured. The built-in prompts enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
 - **providers:** Global upstream provider map. Each provider key (for example `dashscope`) becomes a route prefix (`/dashscope/v1/messages`). Supports `type: "anthropic"`, `type: "openai-compatible"`, and `type: "openai-responses"`. Top-level clients can also use `model: "dashscope/model-id"` with `/v1/messages`, `/v1/messages/count_tokens`, `/v1/responses`, and `/v1/chat/completions`; the gateway strips the `dashscope/` prefix before forwarding upstream. The `/v1/responses` route for `anthropic` and `openai-compatible` providers uses the Responses Lite → Messages adapter; `openai-compatible` providers then reuse the Messages → Chat translation. Codex clients (`User-Agent` starting with `codex`) also use the adapter for non-`gpt-*` models on `openai-responses` providers. `GET /v1/models` aggregates enabled provider models with `provider/model-id` IDs, while the top-level Codex-UA catalog also merges these adaptable models as `use_responses_lite` entries (except DeepSeek models, which use `use_responses_lite: false` and `tool_mode: null`). Use `GET /dashscope/v1/models` for a single provider's raw model list.
   - `enabled` defaults to `true` if omitted.
