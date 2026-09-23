@@ -2,6 +2,7 @@
 
 import { defineCommand } from "citty"
 import consola from "consola"
+import { randomBytes } from "node:crypto"
 
 import {
   getRawProviderConfig,
@@ -544,6 +545,12 @@ const authKeysArgs = {
     default: false,
     description: "Remove all configured API keys",
   },
+  generate: {
+    alias: "g",
+    type: "boolean",
+    default: false,
+    description: "Generate and add a cryptographically random API key",
+  },
 } as const
 
 interface RunAuthKeysOptions {
@@ -551,6 +558,7 @@ interface RunAuthKeysOptions {
   remove?: string
   list?: boolean
   clear?: boolean
+  generate?: boolean
 }
 
 function normalizeAuthKeyValue(value: string): string {
@@ -572,14 +580,25 @@ export async function runAuthKeys(options: RunAuthKeysOptions): Promise<void> {
     ...(options.remove !== undefined ? ["remove"] : []),
     ...(options.list ? ["list"] : []),
     ...(options.clear ? ["clear"] : []),
+    ...(options.generate ? ["generate"] : []),
   ]
   if (operations.length > 1) {
     throw new Error(
-      "Use only one of --add, --remove, --list, or --clear per invocation",
+      "Use only one of --add, --remove, --list, --clear, or --generate per invocation",
     )
   }
 
   const operation = operations[0] ?? "list"
+
+  if (operation === "generate") {
+    const apiKey = randomBytes(32).toString("hex")
+    const storedKeys = setConfiguredApiKeys([...getConfiguredApiKeys(), apiKey])
+    consola.success(
+      `Generated API key: ${apiKey}\n`
+        + `Saved to ${PATHS.CONFIG_PATH}. ${storedKeys.length} API key(s) configured.`,
+    )
+    return
+  }
 
   if (operation === "add") {
     const apiKey = normalizeAuthKeyValue(options.add ?? "")
@@ -624,7 +643,7 @@ export async function runAuthKeys(options: RunAuthKeysOptions): Promise<void> {
   const currentKeys = getConfiguredApiKeys()
   if (currentKeys.length === 0) {
     consola.info(
-      "No API keys configured. Run `npx copilot-api auth keys --add <key>` to add one.",
+      "No API keys configured. Run `copilot-api auth keys --generate` to add one.",
     )
     return
   }
@@ -662,6 +681,7 @@ const authKeys = defineCommand({
       remove: args.remove,
       list: args.list,
       clear: args.clear,
+      generate: args.generate,
     })
   },
 })

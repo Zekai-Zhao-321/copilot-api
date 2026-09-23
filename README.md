@@ -24,7 +24,32 @@
 
 ## Quick Start
 
-The fastest way to get a working gateway:
+For this fork on Windows, run the reviewed checkout directly with Bun (no
+Docker or downloaded release). If dependencies are missing, install them once
+after reviewing `bun.lock`:
+
+```powershell
+bun install --frozen-lockfile --ignore-scripts
+```
+
+Sign in to GitHub Copilot and generate a gateway key only if you have not
+already done so:
+
+```powershell
+bun run ./src/main.ts auth login --provider copilot
+bun run ./src/main.ts auth keys --generate
+```
+
+Double-click **`start.bat`** to launch on `127.0.0.1:4141`; double-click
+**`stop.bat`** to shut down only that instance. The start script requires a
+gateway key, prefers the saved GitHub login over any ambient `GH_TOKEN`, and
+confirms an authenticated `/v1/models` response before reporting success.
+Startup logs and the process record stay under
+`%LOCALAPPDATA%\copilot-api-gateway`, not in this repository. A GitHub `403`
+from the Copilot token exchange means the gateway did **not** start; signing
+in again is not a guaranteed fix for a policy or access denial.
+
+For the published upstream package rather than this checkout:
 
 ```sh
 npx @jeffreycao/copilot-api@latest start
@@ -45,7 +70,7 @@ curl http://localhost:4141/v1/models
 > [!NOTE]
 > Token usage storage requires Node.js >= 22.13.0 or Bun. See [Using with npx](#using-with-npx) for details.
 
-From here, jump to the guide for your client: [Claude Code](#using-with-claude-code), [OpenCode](#using-with-opencode), [Codex](#using-with-codex), or run it with [Docker](#using-with-docker).
+From here, jump to the guide for your client: [Claude Code](#using-with-claude-code), [OpenCode](#using-with-opencode), or [Codex](#using-with-codex). Docker is optional.
 
 ## Highlights
 
@@ -70,6 +95,18 @@ Every client talks to the same local endpoint. The gateway routes each request t
 | Anthropic-compatible clients | — | — | ✅ Native / Adapter | Anthropic Messages |
 
 **Providers and protocols.** Protocol support is model-specific. Chat Completions requires a native endpoint, while Responses and Messages can use supported adapters. The built-in `codex` provider uses Responses natively; third-party providers can use `anthropic`, `openai-compatible`, or `openai-responses`, with per-model overrides.
+
+### Using Claude and Codex together
+
+Run one gateway on `127.0.0.1:4141`. Point Claude Code at `http://127.0.0.1:4141` with `ANTHROPIC_BASE_URL` and a gateway key in `ANTHROPIC_AUTH_TOKEN`; it uses `/v1/messages`. In Claude Desktop, enable developer mode and set **Developer -> Configure Third-Party Inference** to **Gateway** with the same base URL and a gateway key. [Claude Desktop's gateway setup](https://claude.com/docs/third-party/claude-desktop/gateway) also uses `/v1/messages` and can discover `/v1/models`.
+
+Because that catalog also contains GPT models for Codex, set Claude Desktop's **Models** list (`inferenceModels`) to the Claude IDs your seat offers. The first entry becomes Desktop's default; gateway discovery alone does not choose a Claude-only default. For Claude Code, `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` adds available models to its picker, while the Opus/Sonnet/Haiku tier variables decide which IDs those aliases request. Update the tier IDs when your Copilot seat gains a newer model.
+
+Configure Codex's user-level `~/.codex/config.toml` with a custom Responses provider using `base_url = "http://127.0.0.1:4141/v1"`, `wire_api = "responses"`, and a gateway key (see [Using with Codex](#using-with-codex)). Do not rely on a project-scoped config or assume the ChatGPT desktop app supports the same custom provider. Keep keys out of committed project settings.
+
+These routes share the gateway's model catalog and `auth.apiKeys`. Separate keys let you rotate or revoke each client independently, but do **not** restrict which models a key can use. A global Claude-only model allowlist would also hide GPT models from Codex; use the clients' model selection settings instead. For a Claude-like model picker, map Claude Code's Opus, Sonnet, and Haiku tiers to Claude model IDs available on your Copilot seat rather than setting `ANTHROPIC_MODEL` to a GPT model. Note that the gateway defaults `smallModel` and `messageApiWebSearchModel` to `gpt-5-mini`, so some Claude Code warmups and WebSearch requests can still use GPT unless you change those settings. Strict per-client isolation requires separate gateway instances with different credentials/configurations, or a future server-side per-key policy; adding a second URL to this instance would not provide it.
+
+Claude Code's WebSearch-only requests use `messageApiWebSearchModel` to run Copilot Responses web search, then return an Anthropic-shaped result under the requested Claude model ID. The default is `gpt-5-mini`; `gpt-6-luna` is another option when your Copilot model catalog advertises it with a `/responses` endpoint and actually accepts the `web_search` tool. The gateway attributes usage to the search model. This translation is distinct from Codex's own Responses web search and from either client's context compaction.
 
 ## Desktop App
 
@@ -422,25 +459,46 @@ npx @jeffreycao/copilot-api@latest start
 
 ## Using with Docker
 
-Build the image:
+For a corporate Copilot seat, use the checked-in Compose definition. It builds
+the gateway from the current source checkout and locked dependencies; it does
+not download a Copilot API release or npm package. The resulting container runs
+as a non-root user with a read-only root filesystem, persists state in a named
+volume, requires gateway API-key authentication, and publishes the port only on
+the host loopback interface.
+
+Build the image from this checkout:
 
 ```sh
-docker build -t copilot-api .
+docker compose build --pull
 ```
 
-Run the container with a bind mount so auth data survives restarts:
+Authenticate the Copilot provider and generate a gateway API key. The generated
+key is printed once; save it in your harness's secret store.
 
 ```sh
-mkdir -p ./copilot-data
-docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api
+docker compose run --rm --no-deps copilot-api --auth login --provider copilot
+docker compose run --rm --no-deps copilot-api --auth keys --generate
 ```
 
-This stores GitHub auth data, provider config, and other gateway state in `./copilot-data` on the host, mapped to `/root/.local/share/copilot-api` in the container.
-
-Or pass a GitHub token directly:
+Start the gateway and verify the generated key:
 
 ```sh
-docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here copilot-api
+docker compose up -d
+curl -H "Authorization: Bearer <generated-key>" http://127.0.0.1:4141/v1/models
+```
+
+Use `http://127.0.0.1:4141/v1` for OpenAI-compatible harnesses and
+`http://127.0.0.1:4141` for Anthropic-compatible harnesses. Configure the
+generated key as the harness API key. The `copilot-api-data` volume stores the
+GitHub token, gateway configuration, device ID, logs, and usage database across
+container rebuilds. `docker compose down` preserves it; `docker compose down -v`
+permanently removes it.
+
+To prove which local source revision you built:
+
+```sh
+git rev-parse HEAD
+docker compose images
 ```
 
 ## Electron Desktop App

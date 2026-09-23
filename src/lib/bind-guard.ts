@@ -56,7 +56,7 @@ export function assertSafeBindPosture(
       + "  This would expose an unauthenticated gateway to the network.\n"
       + "  Fix one of:\n"
       + "    * Bind to loopback (default): drop --host, or use --host 127.0.0.1\n"
-      + "    * Require a key: npx copilot-api auth keys --add <key>\n"
+      + "    * Require a key: copilot-api auth keys --generate\n"
       + "    * Explicitly accept the risk: pass --allow-unauthenticated",
   )
 }

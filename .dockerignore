@@ -11,3 +11,17 @@ tests/
 *.md
 
 .eslintcache
+
+# Keep local credentials and runtime volumes out of the build context.
+**/.env
+**/.env.*
+**/*.local
+**/config.json
+**/*_token
+**/*credentials*.json
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+copilot-data/
+.claude/

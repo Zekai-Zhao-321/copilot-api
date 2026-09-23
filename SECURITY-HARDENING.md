@@ -95,23 +95,49 @@ against the code; the DoS and CORS items were reproduced end-to-end.
 
 ## Recommended way to run it (corporate seat)
 
+On Windows, run the reviewed fork directly without Docker. After authenticating
+with `bun run ./src/main.ts auth login --provider copilot` and configuring a
+key with `bun run ./src/main.ts auth keys --generate`, double-click
+`start.bat` or `stop.bat`. The start script binds loopback, requires a gateway
+key, ignores ambient `GH_TOKEN` in favor of the saved GitHub credential, and
+reports failure if startup or the authenticated models check fails. Its logs
+and PID record live under `%LOCALAPPDATA%\copilot-api-gateway`. Do not put
+gateway keys in the repository or pass GitHub tokens on the command line.
+
+For an optional isolated container deployment:
+
 ```bash
-# 1. Authenticate (stores the token 0600 under ~/.local/share/copilot-api/)
-npx copilot-api auth login
+# 1. Build the current reviewed checkout; no release binary/package is used
+docker compose build --pull
 
-# 2. Add an API key so the gateway is not open even on loopback
-npx copilot-api auth keys --add "$(openssl rand -hex 32)"
+# 2. Authenticate into the private named volume
+docker compose run --rm --no-deps copilot-api --auth login --provider copilot
 
-# 3. Start it — loopback-only by default, no extra flags needed
-npx copilot-api start
+# 3. Generate an API key without putting the secret in shell history or argv
+docker compose run --rm --no-deps copilot-api --auth keys --generate
+
+# 4. Start the non-root, read-only container on host loopback only
+docker compose up -d
 ```
 
 Point your harness (Codex, Claude Code, …) at `http://127.0.0.1:4141` and send
-the API key as a bearer token / `x-api-key`.
+the generated API key as a bearer token / `x-api-key`. The Compose file builds
+from this checkout, drops all Linux capabilities, enables `no-new-privileges`,
+uses a read-only root filesystem, and persists mutable state in a named volume.
 
 Do **not** use `--verbose` or `--show-token` for routine operation (both write
 or print sensitive material). Do not set `COPILOT_API_ENTERPRISE_URL` unless it
 is genuinely your GitHub Enterprise host.
+
+For Claude Code, `DISABLE_TELEMETRY=1` and `DISABLE_ERROR_REPORTING=1` opt out
+of the respective background reports; `DISABLE_FEEDBACK_COMMAND=1` disables
+the `/feedback`, `/bug`, and `/share` submission path. The old
+`DISABLE_BUG_COMMAND` spelling still works, but the feedback name is current.
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is broader and also stops
+auto-updates, so plan a manual update path if you set it. Neither that flag
+nor the telemetry flags disable WebFetch's hostname safety check against
+Anthropic. `skipWebFetchPreflight: true` skips the check but also removes its
+blocklist protection; do not copy it blindly from an egress-restricted setup.
 
 **Egress allowlist** for normal operation: `github.com`, `api.github.com`,
 `api.githubcopilot.com` (and `api.business.githubcopilot.com` /
@@ -143,15 +169,19 @@ you can make.
 3. **No request throttling.** Agentic harnesses burst dozens of requests/minute
    with no human pacing — the pattern `NOTICE.md` warns about. Mitigate at the
    harness (lower concurrency, avoid unattended loops), not here.
-4. **Supply chain: pin the version.** The upstream package publishes ~1.8
-   releases/day and every documented install path uses `@latest`, including the
-   Claude plugin's `.mcp.json`. The published package has clean provenance
-   (OIDC trusted publishing + SLSA), so pin an exact version and verify:
+4. **Supply chain: build the reviewed source.** The upstream package publishes
+   frequently and most upstream install paths use `@latest`. The corporate
+   Compose workflow does not install that package or a GitHub release: it builds
+   the current checkout using the committed lockfile, disables dependency
+   lifecycle scripts, and pins the Bun base image by OCI digest. Record and
+   review the source revision before rebuilding:
    ```bash
-   npm install --save-exact --ignore-scripts @jeffreycao/copilot-api@<version>
-   npm audit signatures   # needs registry.npmjs.org + tuf-repo-cdn.sigstore.dev
+   git rev-parse HEAD
+   git diff --check
+   docker compose build --pull
    ```
-   Replace `@latest` with the pinned version in any `.mcp.json` you use.
+   A source build still downloads dependencies named in `bun.lock` and the
+   pinned base image; apply your normal registry mirror and egress controls.
 5. **Third-party CDN assets in the usage-viewer.** The dashboard still pulls
    Tailwind/Lucide from CDNs without SRI (now constrained by CSP). Only relevant
    if you open `/usage-viewer` in a browser; it also won't load on an

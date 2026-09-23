@@ -166,11 +166,29 @@ describe("auth keys CLI", () => {
     expect(readConfigFile(tempDir).auth?.apiKeys).toEqual([])
   })
 
+  test("generates and stores a cryptographically random API key", () => {
+    const tempDir = createTempConfigDir()
+    writeConfigFile(tempDir, { auth: { apiKeys: ["existing-key"] } })
+
+    const result = runAuthKeys(tempDir, "--generate")
+
+    expect(result.exitCode).toBe(0)
+    const match = result.stdout.match(/\b[a-f0-9]{64}\b/u)
+    expect(match).not.toBeNull()
+    if (!match) {
+      throw new Error("Generated API key was not printed")
+    }
+    expect(readConfigFile(tempDir).auth?.apiKeys).toEqual([
+      "existing-key",
+      match[0],
+    ])
+  })
+
   test("rejects combining multiple operations", () => {
     const tempDir = createTempConfigDir()
     writeConfigFile(tempDir, {})
 
-    const result = runAuthKeys(tempDir, "--add", "key-1", "--clear")
+    const result = runAuthKeys(tempDir, "--generate", "--clear")
 
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain("only one")
