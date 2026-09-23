@@ -10,6 +10,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { assertModelExposed } from "~/lib/model-exposure"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
@@ -79,6 +80,7 @@ export async function handleCompletionPayload(
   const requestedModel = anthropicPayload.model
   if (!dispatchOptions.skipModelMapping) {
     anthropicPayload.model = resolveMappedModel(anthropicPayload.model)
+    assertModelExposed(anthropicPayload.model)
   }
   if (anthropicPayload.model !== requestedModel) {
     consola.debug(
