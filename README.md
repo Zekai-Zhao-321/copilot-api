@@ -141,6 +141,8 @@ Paste and run this command in a new terminal to launch Claude Code.
 
 Alternatively, you can configure Claude Code by creating a `.claude/settings.json` file in your project's root directory. This file should contain the environment variables needed by Claude Code. This way you don't need to run the interactive setup every time.
 
+The checked-in [Claude Code settings example](examples/claude-code/settings.json) mirrors a working user-level setup with Sonnet as the main model, Opus for the Opus tier, and GPT-6 Luna for the Haiku tier. Copy it to your user-level Claude Code settings if you want those preferences across projects. It intentionally contains **no gateway key**: supply `ANTHROPIC_AUTH_TOKEN` separately in your local environment or another untracked user-level setting, and never commit it.
+
 Here is an example `.claude/settings.json` file:
 
 ```json
