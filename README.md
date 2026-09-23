@@ -171,7 +171,7 @@ Claude Code picks models by tier alias (`opus`, `sonnet`, `haiku`, `fable`), so 
 ```json
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "http://localhost:4141",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
     "ANTHROPIC_AUTH_TOKEN": "<gateway api key, or any string if none>",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6[1m]",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-6[1m]",
@@ -183,7 +183,9 @@ Claude Code picks models by tier alias (`opus`, `sonnet`, `haiku`, `fable`), so 
 
 Replace the IDs with what `curl http://localhost:4141/v1/models` returns (use each model's `claude_model_id`, which carries `[1m]` when the model has a 1M window), or run `start --claude-code` to have the newest model per tier filled in for you. Don't set `ANTHROPIC_MODEL` or `CLAUDE_CODE_SUBAGENT_MODEL` if you want Claude Code to choose the tier per task the way it does on a first-party subscription.
 
-For Claude Desktop, open **Developer → Configure Third-Party Inference**, set the provider to **Gateway**, the base URL to `http://localhost:4141`, and the API key to your gateway key. Desktop discovers models from `/v1/models`, so `exposedModels` limits its picker too. See [Claude Desktop gateway docs](https://claude.com/docs/third-party/claude-desktop/gateway).
+For Claude Desktop, open **Developer → Configure Third-Party Inference**, set the provider to **Gateway**, the base URL to `http://127.0.0.1:4141`, and the API key to your gateway key. Desktop discovers models from `/v1/models`, so `exposedModels` limits its picker too. See [Claude Desktop gateway docs](https://claude.com/docs/third-party/claude-desktop/gateway).
+
+To make sure Claude Code and Claude Desktop themselves connect only to the gateway, see [Locking Claude Code and Claude Desktop to the gateway](./SECURITY-HARDENING.md#locking-claude-code-and-claude-desktop-to-the-gateway).
 
 ## Using with OpenCode
 
